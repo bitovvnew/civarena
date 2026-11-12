@@ -16,6 +16,6 @@ execFileSync(process.execPath, [vite, 'build', '--outDir', OUT], {
   stdio: 'inherit',
   env: { ...process.env, VITE_STATIC: './demo.civ.json.gz' },
 });
-execFileSync(process.execPath, [BIN, 'run', '--seed', '42', '--ticks', '800', '--out', path.join(OUT, 'demo.civ.json.gz')], { stdio: 'inherit', cwd: ROOT });
+execFileSync(process.execPath, [BIN, 'run', '--offline', '--scenario', 'classic', '--agents', '500', '--seed', '42', '--policy-every', '25', '--ticks', '800', '--out', path.join(OUT, 'demo.civ.json.gz')], { stdio: 'inherit', cwd: OUT });
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 console.log(`\n  static demo ready in ${path.relative(ROOT, OUT)}/`);

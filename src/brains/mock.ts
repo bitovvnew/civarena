@@ -29,7 +29,7 @@ const BASE: Record<Personality, Omit<TeamPolicy, 'jobBias' | 'rationale'>> = {
 const outputOf = (j: Job): Good => JOB_OUTPUT[j];
 
 export class MockBrain implements Brain {
-  readonly provider = 'mock';
+  readonly provider = 'offline';
   readonly model: string;
   readonly label: string;
   private rng: Rng;

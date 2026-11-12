@@ -1,0 +1,14 @@
+{
+  "format": "civarena-scenario",
+  "version": 1,
+  "id": "helicopter-money",
+  "name": "Helicopter money",
+  "description": "A recession at day 100, answered with cash drops every 20 days. Stimulus or inflation?",
+  "author": "CivArena",
+  "tags": ["money", "inflation"],
+  "timeline": [
+    { "day": 100, "command": { "type": "shock", "kind": "plague" }, "headline": "A plague closes workshops across the land." },
+    { "day": 101, "command": { "type": "rate", "rate": 0.5 }, "headline": "The central bank cuts rates to almost zero." }
+  ],
+  "repeat": [{ "from": 110, "every": 20, "to": 400, "command": { "type": "print", "amount": 4000 } }]
+}

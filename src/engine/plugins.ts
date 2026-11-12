@@ -26,6 +26,12 @@ export interface Scenario {
   id: string;
   name: string;
   description: string;
+  tags?: string[];
+  author?: string;
+  /** Where it came from: built into CivArena, a code plugin, or a shareable JSON file. */
+  source?: 'builtin' | 'code' | 'json';
+  /** The JSON definition, for declarative scenarios (exportable / shareable). */
+  spec?: unknown;
   /** Overrides for the starting government / central bank. */
   setup?: {
     gov?: Partial<Omit<Government, 'treasury'>>;

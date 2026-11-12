@@ -16,7 +16,7 @@ import {
 } from './types.js';
 import { agentWealth, apply, debtByAgent, emptyInventory, emptyState, moneySupply } from './world.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 
 // Validated categorical palette (dark steps), fixed order: blue, orange, aqua, yellow, magenta, green, violet, red.
 export const TEAM_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
@@ -78,6 +78,7 @@ export class Simulation {
   /** What citizens in each job actually earned per tick lately (net of inputs). Peers watch this. */
   private jobIncome: Record<Job, number> = zeroJobs();
   private money0 = 0;
+  private outOfBudget = new Set<string>();
 
   constructor(options: SimOptions) {
     this.seed = hashSeed(options.seed ?? 42);
@@ -218,7 +219,13 @@ export class Simulation {
         try {
           return await brain.decide(obsList[i]);
         } catch (err) {
-          this.opts.onLog(`[${team.label}] brain error: ${(err as Error).message}`);
+          const e = err as Error;
+          if (e.name === 'BudgetExceeded') {
+            if (!this.outOfBudget.has(team.id)) {
+              this.outOfBudget.add(team.id);
+              this.headline('policy', 2, 'h.budget', { team: team.label }, team.id);
+            }
+          } else this.opts.onLog(`[${team.label}] brain error: ${e.message}`);
           return null;
         }
       }),
@@ -249,13 +256,14 @@ export class Simulation {
     return out;
   }
 
-  toReplay(scenarioId = this.opts.scenario.id): ReplayFile {
+  toReplay(scenarioId = this.opts.scenario.id, scenarioName = this.opts.scenario.name): ReplayFile {
     const s = this.state;
     return {
       format: 'civarena-replay',
       version: 1,
       createdWith: `civarena ${VERSION}`,
       scenario: scenarioId,
+      scenarioName,
       seed: this.seed,
       config: {
         agents: this.opts.agents,

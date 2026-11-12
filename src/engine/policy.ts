@@ -30,7 +30,13 @@ export function sanitizePolicy(raw: unknown, prev: TeamPolicy = defaultPolicy())
   const jobBias = {} as Record<Job, number>;
   for (const j of JOBS) jobBias[j] = clamp(jb[j], 0.2, 3, prev.jobBias[j]);
   let rationale = typeof r.rationale === 'string' ? r.rationale : prev.rationale;
-  rationale = rationale.replace(/\s+/g, ' ').trim().slice(0, 160);
+  // Model text is shown in the feed and fed back only to the SAME team: keep it plain and short.
+  rationale = rationale
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, ' ')
+    .replace(/[<>{}[\]`\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
   return {
     markup: clamp(r.markup, -0.5, 1.5, prev.markup),
     bidPremium: clamp(r.bidPremium, -0.3, 1, prev.bidPremium),

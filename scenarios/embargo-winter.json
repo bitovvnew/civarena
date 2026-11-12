@@ -1,0 +1,14 @@
+{
+  "format": "civarena-scenario",
+  "version": 1,
+  "id": "embargo-winter",
+  "name": "Embargo winter",
+  "description": "Cut off from the world at day 120, then a drought. Self-sufficiency is the only way through.",
+  "author": "CivArena",
+  "tags": ["trade", "food"],
+  "timeline": [
+    { "day": 120, "command": { "type": "shock", "kind": "trade_embargo" }, "headline": "Borders close. No imports, no exports." },
+    { "day": 150, "command": { "type": "shock", "kind": "drought" } },
+    { "day": 165, "command": { "type": "shock", "kind": "trade_embargo" } }
+  ]
+}

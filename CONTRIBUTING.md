@@ -12,7 +12,7 @@ npm test
 npm start
 ```
 
-Node 20 or newer. `npm run dev` gives a hot-reloading dashboard that proxies `/api` to a `civarena` running on port 4321.
+Use Node 22.12 or later to develop and test. The prebuilt CLI runs on Node 20 or later. `npm run dev` gives a hot-reloading dashboard that proxies `/api` to a `civarena` running on port 4321.
 
 ## Ground rules for the engine
 
@@ -28,11 +28,11 @@ Add a class in `src/brains/llm.ts` that extends `LlmBrain` and implements `compl
 
 ## Adding a scenario
 
-Built-ins live in `src/scenarios/index.ts`. User scenarios are `.mjs` files in `./scenarios/` (see `scenarios/tax-cut.mjs`). Good scenarios ask a question: *what happens to a cartel-heavy economy when antitrust arrives at day 200?*
+Built-ins live in `src/scenarios/index.ts`. Shareable scenarios use JSON (see [Cartel Crackdown](scenarios/cartel-crackdown.json)). Trusted local plugins can use an `.mjs` file with an `onTick` handler.
 
 ## Dashboard
 
-React + hand-written SVG/canvas charts in `web/src`. Colors come from CSS tokens in `styles.css`; team colors use a fixed, color-blind-checked order. New UI strings need a key in every language in `web/src/i18n.ts` (English fallback is automatic, but please try).
+React and hand-written SVG and canvas charts live in `web/src`. Colors come from CSS tokens in `styles.css`. Add each new UI string to the locale files in `web/src/locales/`.
 
 ## Pull requests
 

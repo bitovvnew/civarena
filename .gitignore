@@ -4,5 +4,6 @@ dist/
 *.civ.json.gz
 !examples/*.civ.json.gz
 .env
+.civarena.json
 .DS_Store
 coverage/

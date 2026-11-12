@@ -1,6 +1,6 @@
 {
   "name": "civarena",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI Civilization Arena: hundreds of LLM agents run a living economy with markets, banks, taxes and cartels. Watch it on a live dashboard and find out which model is the best capitalist.",
   "type": "module",
   "license": "MIT",
@@ -10,6 +10,7 @@
   "files": [
     "bin",
     "dist",
+    "!dist/demo",
     "scenarios",
     "README.md",
     "LICENSE",
@@ -25,7 +26,7 @@
     "sim": "node bin/civarena.js run",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "screenshots": "node scripts/screenshots.mjs",
+    "screenshots": "npm run build --silent && node scripts/screenshots.mjs",
     "prepare": "node scripts/prepare.mjs",
     "demo:build": "node scripts/build-demo.mjs"
   },

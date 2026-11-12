@@ -4,12 +4,26 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": false,
-    "types": []
+    "types": [],
+    "resolveJsonModule": true
   },
-  "include": ["web/src/**/*.ts", "web/src/**/*.tsx", "src/engine/types.ts", "src/engine/map.ts", "src/engine/rng.ts"]
+  "include": [
+    "web/src/**/*.ts",
+    "web/src/**/*.tsx",
+    "web/src/**/*.json",
+    "src/engine/types.ts",
+    "src/engine/map.ts",
+    "src/engine/rng.ts",
+    "src/render/*.ts",
+    "src/engine/commands.ts"
+  ]
 }

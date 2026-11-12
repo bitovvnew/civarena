@@ -39,43 +39,45 @@ What comes out is a story you did not write:
 
 ## Quickstart
 
-No API key, no network, one command:
+Run the prebuilt release with Node 20 or later. The simulation uses four built-in teams and needs no API key.
+
+```bash
+npx https://github.com/bitovvnew/civarena/releases/download/v0.1.1/civarena-0.1.1.tgz
+```
+
+Use `npm install -g` with the same release URL to add the `civarena` command to your shell.
+
+To build from source, use Node 22.12 or later.
 
 ```bash
 git clone https://github.com/bitovvnew/civarena.git
 cd civarena
-npm install
+npm ci
 npm start
 ```
 
 Your browser opens on a live world with 500 citizens and four offline teams. Pull the levers: raise taxes, slash interest rates, print money, unleash a drought or a plague, switch on antitrust, and watch what happens.
 
-Or straight from GitHub:
-
-```bash
-npx github:bitovvnew/civarena
-```
-
 ## Put real models in the arena
 
 ```bash
-export OPENAI_API_KEY=...  ANTHROPIC_API_KEY=...  GEMINI_API_KEY=...
-
-civarena --teams openai,anthropic,gemini,ollama:llama3.1
+civarena setup        # browser setup
+civarena setup --cli  # terminal setup
 ```
 
-| Spec | What it runs | Key |
+Setup lists models available to your provider account and detects installed Ollama models. Saved teams load automatically on subsequent runs. Use `--offline` to override them for a keyless run.
+
+| Team spec | Provider | Environment variable |
 |---|---|---|
-| `openai[:model]` | OpenAI Chat Completions (default `gpt-5-mini`) | `OPENAI_API_KEY` |
-| `anthropic[:model]` | Claude Messages API (default `claude-opus-5-5`) | `ANTHROPIC_API_KEY` |
-| `gemini[:model]` | Google Gemini (default `gemini-2.5-flash`) | `GEMINI_API_KEY` |
-| `ollama[:model]` | any local Ollama model | none |
-| `compat:model@http://host/v1` | any OpenAI-compatible server (LM Studio, vLLM, OpenRouter...) | `COMPAT_API_KEY` (optional) |
-| `mock:tycoon` `mock:cooperative` `mock:prudent` `mock:gambler` `mock:adaptive` | offline personalities | none |
+| `openai:<model>` | OpenAI Chat Completions | `OPENAI_API_KEY` |
+| `anthropic:<model>` | Claude Messages | `ANTHROPIC_API_KEY` |
+| `gemini:<model>` | Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| `openrouter:<vendor/model>` | OpenRouter | `OPENROUTER_API_KEY` |
+| `ollama:<model>` | Ollama | Optional `OLLAMA_BASE_URL` |
+| `compat:<model>@http://localhost:1234/v1` | OpenAI-compatible endpoint | Optional `COMPAT_API_KEY` |
+| `offline:tycoon`, `offline:cooperative`, `offline:prudent`, `offline:gambler`, `offline:adaptive` | Built-in personalities | None |
 
-Mix them however you like: `--teams anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5,openai:gpt-5,mock:tycoon` pits two Claude sizes against GPT and a greedy baseline.
-
-**It is cheap.** A brain is called once per team every 25 days (`--policy-every`), not once per citizen. A 500-day world with four LLM teams makes about 80 calls in total. Each call is a small JSON observation in and a small JSON strategy out.
+The setup wizard saves keys in a local `.env` file and team settings in `.civarena.json`. You can supply keys through environment variables instead. A team brain receives a compact JSON observation every 25 simulated days by default. The dashboard tracks calls and provider-reported tokens. The engine stops scheduling strategy calls for teams that reach their configured limits.
 
 Every team starts identical: same number of citizens, same job mix, same cash, same goods. The only difference is the brain.
 
@@ -145,34 +147,33 @@ The same four offline teams, 500 days, seed 42: under `laissez-faire` 336 of 500
 
 ### Write your own scenario
 
-Drop a file into `./scenarios/` and it is picked up automatically:
+Use the dashboard scenario builder or drop a JSON file into `./scenarios/`. The loader validates the starting rules and scheduled commands.
 
-```js
-// scenarios/tax-cut.mjs
-export default {
-  id: 'tax-cut',
-  name: 'Election-year tax cut',
-  description: 'Taxes start at 25%. At day 150 they drop to 5% and welfare ends.',
-  setup: { gov: { taxRate: 0.25, welfare: true } },
-  onTick(api) {
-    if (api.tick === 150) {
-      api.command({ type: 'tax', rate: 0.05 });
-      api.command({ type: 'welfare', on: false });
-      api.headline('A new government wins on a promise: lower taxes, no handouts.', 2);
-    }
-  },
-};
+```json
+{
+  "format": "civarena-scenario",
+  "version": 1,
+  "id": "tax-cut",
+  "name": "Election-year tax cut",
+  "description": "Taxes start at 25% and fall to 5% on day 150.",
+  "setup": { "gov": { "taxRate": 0.25, "welfare": true } },
+  "timeline": [
+    { "day": 150, "command": { "type": "tax", "rate": 0.05 }, "headline": "The new government cuts taxes." },
+    { "day": 150, "command": { "type": "welfare", "on": false } }
+  ]
+}
 ```
 
-`api.command` accepts everything the dashboard can do: `tax`, `rate`, `ubi`, `welfare`, `antitrust`, `print`, `shock` (`drought`, `mine_collapse`, `tech_boom`, `plague`, `gold_rush`, `trade_embargo`).
+The bundled [scenario examples](scenarios/) show recurring commands and shocks. Trusted local code plugins can export a scenario with an `onTick(api)` handler. Share JSON scenarios with other players.
 
 ## Replays
 
 Every world can be saved and shared.
 
 ```bash
-civarena run --teams openai,anthropic --ticks 800 --out showdown.civ.json.gz
+civarena run --offline --ticks 800 --out showdown.civ.json.gz
 civarena replay showdown.civ.json.gz
+civarena gif showdown.civ.json.gz --out showdown.gif
 ```
 
 In the dashboard, **Download replay** saves the current world, and you can drag any `.civ.json(.gz)` file onto the page to watch it. Add `?at=end` or `?at=250` to the URL to open a replay at a given day.
@@ -188,7 +189,16 @@ In the dashboard, **Download replay** saves the current world, and you can drag 
 * **Charts**: GDP, price index, money supply, unemployment, share of wealth by team, prices of all five goods, and a trade network between teams.
 * **Controls**: taxes, interest rate, basic income, welfare, antitrust, printing money, six economic shocks, new world.
 * **Timeline** with markers for dramatic moments. Scrub back through history, live or in replays.
-* **6 languages**: English, Русский, Español, Deutsch, 中文, 日本語. Light and dark themes. Works on a phone.
+* **Eight languages** cover English, Russian, Kazakh, French, Simplified Chinese, Korean, Spanish and Japanese. Includes light and dark themes and a mobile layout.
+* **Day edition and citizen dossiers** link the economy's headlines to individual agents, their trades and their history.
+
+## Tournaments
+
+```bash
+civarena tournament --offline --scenarios classic,drought --seeds 5 --ticks 200
+```
+
+The tournament rotates starting positions across seeds and reports wins, mean scores and 95% confidence intervals. It saves Markdown and JSON results. Open the JSON in the dashboard to compare teams and runs.
 
 <p>
 <img src="docs/img/light.png" alt="Light theme" width="49%" />
@@ -199,11 +209,15 @@ In the dashboard, **Download replay** saves the current world, and you can drag 
 
 ```
 civarena [start] [options]      run a live world and open the dashboard
+civarena setup [--cli]          configure teams with live model discovery
 civarena run [options]          simulate headless and save a replay
 civarena replay <file>          open a saved replay in the dashboard
+civarena gif <file>             render a replay as an animated GIF
+civarena tournament [options]   benchmark teams across seeds and scenarios
 civarena scenarios              list scenarios
 
---teams <list>       comma-separated team specs (default: 4 offline personalities)
+--teams <list>       comma-separated team specs (default: saved teams or 4 offline teams)
+--offline            force the four built-in teams
 --agents <n>         citizens (default 500)
 --seed <seed>        any number or word (default 42)
 --scenario <id>      see "Scenarios"
@@ -242,8 +256,6 @@ test/          vitest suite
 - [ ] Per-citizen LLM brains for small worlds (a few dozen agents, one call each)
 - [ ] Negotiation: agents message each other to form deals and cartels in words
 - [ ] Firms with employees and wages
-- [ ] Tournament mode: many seeds, confidence intervals, a public leaderboard
-- [ ] Animated GIF export of any replay
 
 Ideas and pull requests are very welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 

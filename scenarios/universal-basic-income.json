@@ -1,0 +1,14 @@
+{
+  "format": "civarena-scenario",
+  "version": 1,
+  "id": "ubi-experiment",
+  "name": "The UBI experiment",
+  "description": "Laissez-faire for 150 days, then a 25% tax funds a universal basic income. Does inequality fall without killing GDP?",
+  "author": "CivArena",
+  "tags": ["welfare", "inequality"],
+  "setup": { "gov": { "taxRate": 0.02, "welfare": false } },
+  "timeline": [
+    { "day": 150, "command": { "type": "tax", "rate": 0.25 } },
+    { "day": 150, "command": { "type": "ubi", "amount": 1.5 }, "headline": "Parliament passes the basic income act." }
+  ]
+}

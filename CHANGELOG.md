@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (2026-11-12)
+
+- Start a keyless live or headless world immediately. Run browser or terminal setup to discover provider models and save teams.
+- Add OpenRouter and local Ollama discovery, per-world and per-team usage tracking, and provider rate limits.
+- Compare models across scenario and seed combinations, with seat rotation, confidence intervals and JSON and Markdown reports.
+- Build declarative scenarios in the dashboard and export replays as animated GIFs.
+- Rework the dashboard as a daily newspaper with a market ticker, a day edition, a citizen inspector and eight interface languages.
+- Build reproducible offline assets and test the engine, tournaments, scenario validation, GIF encoding and server guards.
+
 ## 0.1.0 (2026-11-12)
 
 First public release.

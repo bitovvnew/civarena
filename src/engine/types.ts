@@ -310,6 +310,7 @@ export interface ReplayFile {
   version: 1;
   createdWith: string;
   scenario: string;
+  scenarioName?: string;
   seed: number;
   config: { agents: number; ticks: number; teams: { id: string; label: string; provider: string; model: string; color: string }[] };
   map: { width: number; height: number; tiles: number[] };

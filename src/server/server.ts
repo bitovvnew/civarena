@@ -1,56 +1,58 @@
-// Tiny zero-dependency HTTP server: serves the dashboard, streams frames over SSE, takes commands.
+// Zero-dependency HTTP server: serves the dashboard, streams frames over SSE, runs the setup wizard API.
+// Secrets: keys are accepted only from the local machine, written to .env, and never sent back.
 
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { Simulation, VERSION, type SimOptions } from '../engine/engine.js';
+import { GuardedBrain } from '../brains/guard.js';
+import { detect, PROVIDERS, probe, type ProviderId } from '../brains/providers.js';
+import { redact, registerSecret } from '../brains/redact.js';
+import { KEY_ENV, normalizeConfig, saveConfig, saveEnv, type CivConfig } from '../config.js';
+import { validateCommand } from '../engine/commands.js';
+import { Simulation, VERSION } from '../engine/engine.js';
 import type { Scenario } from '../engine/plugins.js';
 import type { Command, Frame, ReplayFile } from '../engine/types.js';
+import { parseScenarioSpec, saveScenarioSpec, scenarioFromSpec } from '../scenarios/index.js';
 
 const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.json': 'application/json',
-  '.woff2': 'font/woff2',
-  '.ico': 'image/x-icon',
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.gz': 'application/gzip',
 };
 
-export interface LiveOptions {
-  make: (seed: number | string) => Simulation;
-  seed: number | string;
-  scenario: Scenario;
-  scenarios: Scenario[];
-  tps: number;
-  maxTicks?: number;
+export interface WorldFactory {
+  /** Build a world from a config (teams, budgets...) and a scenario. Throws a readable error on bad specs. */
+  make(cfg: CivConfig, scenario: Scenario, seed: string | number): Simulation;
 }
 
 export interface ServerOptions {
   port: number;
   host?: string;
   webRoot: string;
-  live?: LiveOptions;
+  /** Live mode: current config (null = not configured yet, start in setup mode). */
+  config?: CivConfig | null;
+  factory?: WorldFactory;
+  scenarios?: Scenario[];
+  tps?: number;
   replay?: ReplayFile;
+  /** Directory holding .env / .civarena.json / scenarios. */
+  dir?: string;
   log?: (msg: string) => void;
 }
 
-/** Runs a live world in the background at a target ticks-per-second. */
-class LiveRunner {
-  sim: Simulation;
+type Mode = 'setup' | 'live' | 'replay';
+
+class Runner {
+  sim: Simulation | null = null;
   paused = false;
   tps: number;
+  scenario: Scenario | null = null;
   private timer: NodeJS.Timeout | null = null;
   private busy = false;
   private listeners = new Set<(event: string, data: unknown) => void>();
-  seed: number | string;
 
-  constructor(private o: LiveOptions, private log: (m: string) => void) {
-    this.seed = o.seed;
-    this.tps = o.tps;
-    this.sim = o.make(o.seed);
+  constructor(tps: number, private log: (m: string) => void) {
+    this.tps = tps;
   }
 
   on(fn: (event: string, data: unknown) => void) {
@@ -58,20 +60,28 @@ class LiveRunner {
     return () => this.listeners.delete(fn);
   }
 
-  private send(event: string, data: unknown) {
+  send(event: string, data: unknown) {
     for (const fn of this.listeners) fn(event, data);
   }
 
+  load(sim: Simulation, scenario: Scenario) {
+    this.sim = sim;
+    this.scenario = scenario;
+    this.paused = false;
+  }
+
   start() {
+    if (this.timer) return;
     const loop = async () => {
       const started = Date.now();
-      if (!this.paused && !this.busy && !(this.o.maxTicks && this.sim.state.tick >= this.o.maxTicks)) {
+      if (this.sim && !this.paused && !this.busy) {
         this.busy = true;
+        const sim = this.sim;
         try {
-          const frame = await this.sim.tick();
-          this.send('frame', frame);
+          const frame = await sim.tick();
+          if (sim === this.sim) this.send('frame', frame);
         } catch (err) {
-          this.log(`tick failed: ${(err as Error).message}`);
+          this.log(redact(`tick failed: ${(err as Error).message}`));
         } finally {
           this.busy = false;
         }
@@ -84,54 +94,23 @@ class LiveRunner {
 
   stop() {
     if (this.timer) clearTimeout(this.timer);
-  }
-
-  command(cmd: Command) {
-    switch (cmd.type) {
-      case 'pause': this.paused = true; break;
-      case 'resume': this.paused = false; break;
-      case 'speed': this.tps = Math.min(60, Math.max(0.2, Number(cmd.tps) || 8)); break;
-      case 'reset':
-        this.seed = cmd.seed ?? Math.floor(Math.random() * 1e9);
-        this.sim = this.o.make(this.seed);
-        this.send('reset', this.meta());
-        break;
-      default:
-        this.sim.command(cmd);
-    }
-    this.send('control', { paused: this.paused, tps: this.tps });
-  }
-
-  meta() {
-    const s = this.sim.state;
-    return {
-      mode: 'live' as const,
-      version: VERSION,
-      seed: this.sim.seed,
-      scenario: { id: this.o.scenario.id, name: this.o.scenario.name, description: this.o.scenario.description },
-      scenarios: this.o.scenarios.map((x) => ({ id: x.id, name: x.name, description: x.description })),
-      teams: s.teams.map((t) => ({ id: t.id, label: t.label, provider: t.provider, model: t.model, color: t.color })),
-      map: { width: s.width, height: s.height, tiles: s.tiles },
-      names: this.sim.names(),
-      agents: this.sim.opts.agents,
-      paused: this.paused,
-      tps: this.tps,
-    };
+    this.timer = null;
   }
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown, gzip = false) {
   const data = Buffer.from(JSON.stringify(body));
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
   if (gzip && data.length > 4096) {
-    res.writeHead(status, { 'content-type': 'application/json', 'content-encoding': 'gzip', 'cache-control': 'no-store' });
+    res.writeHead(status, { ...headers, 'content-encoding': 'gzip' });
     res.end(zlib.gzipSync(data));
     return;
   }
-  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.writeHead(status, headers);
   res.end(data);
 }
 
-function readBody(req: http.IncomingMessage, limit = 64 * 1024): Promise<string> {
+function readBody(req: http.IncomingMessage, limit = 256 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks: Buffer[] = [];
@@ -147,42 +126,109 @@ function readBody(req: http.IncomingMessage, limit = 64 * 1024): Promise<string>
   });
 }
 
-const COMMANDS = new Set(['pause', 'resume', 'speed', 'tax', 'rate', 'ubi', 'welfare', 'antitrust', 'print', 'shock', 'reset']);
-const SHOCKS = new Set(['drought', 'mine_collapse', 'tech_boom', 'plague', 'gold_rush', 'trade_embargo']);
+export const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+export const isLoopback = (addr?: string) => !!addr && (addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1');
 
-export function startServer(o: ServerOptions): Promise<{ url: string; close: () => void; runner?: LiveRunner }> {
+export function startServer(o: ServerOptions): Promise<{ url: string; close: () => void; runner: Runner; mode: () => Mode }> {
   const log = o.log ?? (() => {});
-  const runner = o.live ? new LiveRunner(o.live, log) : undefined;
+  const dir = o.dir ?? process.cwd();
+  const runner = new Runner(o.tps ?? 8, log);
   const clients = new Set<http.ServerResponse>();
+  let config: CivConfig | null = o.config ?? null;
+  let scenarios: Scenario[] = o.scenarios ?? [];
+  let mode: Mode = o.replay ? 'replay' : 'setup';
+  let lastError = '';
 
-  runner?.on((event, data) => {
+  const broadcast = (event: string, data: unknown) => {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const c of clients) c.write(payload);
-  });
+  };
+  runner.on(broadcast);
+
+  const scenarioList = () => scenarios.map((s) => ({ id: s.id, name: s.name, description: s.description, tags: s.tags ?? [], author: s.author ?? '', source: s.source ?? 'code', spec: s.spec ?? null }));
+
+  const meta = () => {
+    if (mode === 'replay') {
+      const r = o.replay!;
+      return {
+        mode, version: VERSION, seed: r.seed, scenario: { id: r.scenario, name: r.scenarioName ?? r.scenario, description: '' }, scenarios: [],
+        teams: r.config.teams, map: r.map, names: r.names, agents: r.config.agents, paused: true, tps: 8,
+      };
+    }
+    const sim = runner.sim;
+    if (mode === 'setup' || !sim) return { mode: 'setup' as const, version: VERSION, error: lastError, scenarios: scenarioList() };
+    const s = sim.state;
+    return {
+      mode: 'live' as const, version: VERSION, seed: sim.seed,
+      scenario: { id: runner.scenario!.id, name: runner.scenario!.name, description: runner.scenario!.description },
+      scenarios: scenarioList(),
+      teams: s.teams.map((t) => ({ id: t.id, label: t.label, provider: t.provider, model: t.model, color: t.color })),
+      map: { width: s.width, height: s.height, tiles: s.tiles }, names: sim.names(), agents: sim.opts.agents,
+      paused: runner.paused, tps: runner.tps, policyEvery: sim.opts.policyEvery,
+    };
+  };
+
+  const launch = (scenarioId?: string, seed?: string | number) => {
+    if (!config || !o.factory) return false;
+    const scenario = scenarios.find((s) => s.id === (scenarioId ?? config!.scenario)) ?? scenarios[0];
+    try {
+      const sim = o.factory.make(config, scenario, seed ?? config.seed);
+      runner.load(sim, scenario);
+      mode = 'live';
+      lastError = '';
+      runner.start();
+      broadcast('reset', meta());
+      return true;
+    } catch (err) {
+      lastError = redact((err as Error).message);
+      log(lastError);
+      return false;
+    }
+  };
+
+  const usage = () => {
+    const sim = runner.sim;
+    if (!sim) return [];
+    return sim.state.teams.map((t) => {
+      const b = sim.brains.get(t.id);
+      const g = b instanceof GuardedBrain ? b : null;
+      return {
+        team: t.id, label: t.label, provider: t.provider,
+        calls: g?.usage.calls ?? 0, tokens: g?.tokens ?? 0, errors: g?.usage.errors ?? 0,
+        limit: g?.budget.teamTokens ?? 0, exhausted: g?.exhausted ?? null,
+      };
+    });
+  };
+
+  if (!o.replay && config && config.teams.length) launch();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const p = url.pathname;
+    const host = req.headers.host ?? '';
+    // DNS-rebinding guard: only answer to localhost names unless the user opted into --lan
+    if (!LOCAL_HOSTS.test(host) && (o.host ?? '127.0.0.1') !== '0.0.0.0') return sendJson(res, 421, { error: 'unexpected host' });
     try {
-      if (p === '/api/meta') {
-        if (runner) return sendJson(res, 200, runner.meta());
-        const r = o.replay!;
-        return sendJson(res, 200, {
-          mode: 'replay', version: VERSION, seed: r.seed, scenario: { id: r.scenario, name: r.scenario, description: '' }, scenarios: [],
-          teams: r.config.teams, map: r.map, names: r.names, agents: r.config.agents, paused: true, tps: 8,
-        }, true);
+      if (req.method === 'POST') {
+        // CSRF guard: JSON only (forces a CORS preflight we never approve) and same-origin only
+        const ct = req.headers['content-type'] ?? '';
+        const origin = req.headers.origin?.replace(/^https?:\/\//, '');
+        if (!ct.startsWith('application/json')) return sendJson(res, 415, { error: 'json only' });
+        if (origin && origin !== host && !LOCAL_HOSTS.test(origin)) return sendJson(res, 403, { error: 'cross-origin request refused' });
       }
+      if (p.startsWith('/api/setup/') && !isLoopback(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'setup is only available from this computer' });
+
+      if (p === '/api/meta') return sendJson(res, 200, meta(), true);
       if (p === '/api/history') {
-        const frames: Frame[] = runner ? runner.sim.history : o.replay!.frames;
+        const frames: Frame[] = mode === 'replay' ? o.replay!.frames : runner.sim?.history ?? [];
         return sendJson(res, 200, frames, true);
       }
+      if (p === '/api/usage') return sendJson(res, 200, { teams: usage(), globalLimit: config?.budget.globalTokens ?? 0 });
       if (p === '/api/replay') {
-        const r = runner ? runner.sim.toReplay() : o.replay!;
+        const r = mode === 'replay' ? o.replay! : runner.sim?.toReplay(runner.scenario?.id, runner.scenario?.name);
+        if (!r) return sendJson(res, 404, { error: 'no world yet' });
         const body = zlib.gzipSync(Buffer.from(JSON.stringify(r)));
-        res.writeHead(200, {
-          'content-type': 'application/gzip',
-          'content-disposition': `attachment; filename="civarena-${r.scenario}-${r.seed}-t${r.config.ticks}.civ.json.gz"`,
-        });
+        res.writeHead(200, { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="civarena-${r.scenario}-${r.seed}-day${r.config.ticks}.civ.json.gz"` });
         return res.end(body);
       }
       if (p === '/api/stream') {
@@ -197,14 +243,75 @@ export function startServer(o: ServerOptions): Promise<{ url: string; close: () 
         return;
       }
       if (p === '/api/command' && req.method === 'POST') {
-        if (!runner) return sendJson(res, 409, { error: 'replay mode is read-only' });
-        const cmd = JSON.parse(await readBody(req)) as Command;
-        if (!cmd || !COMMANDS.has(cmd.type)) return sendJson(res, 400, { error: 'unknown command' });
-        if (cmd.type === 'shock' && !SHOCKS.has(cmd.kind)) return sendJson(res, 400, { error: 'unknown shock' });
-        runner.command(cmd);
+        if (mode !== 'live' || !runner.sim) return sendJson(res, 409, { error: 'no live world' });
+        const cmd = validateCommand(JSON.parse(await readBody(req)));
+        if (!cmd) return sendJson(res, 400, { error: 'invalid command' });
+        applyCommand(cmd);
         return sendJson(res, 200, { ok: true, paused: runner.paused, tps: runner.tps });
       }
-      // static files
+      if (p === '/api/world' && req.method === 'POST') {
+        if (mode === 'replay') return sendJson(res, 409, { error: 'replay mode' });
+        const body = JSON.parse(await readBody(req)) as { scenario?: string; seed?: string | number };
+        const ok = launch(typeof body.scenario === 'string' ? body.scenario : undefined, body.seed !== undefined ? String(body.seed).slice(0, 64) : undefined);
+        return sendJson(res, ok ? 200 : 400, ok ? { ok } : { error: lastError || 'could not start world' });
+      }
+      if (p === '/api/scenarios') {
+        if (req.method === 'POST') {
+          if (!isLoopback(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'local only' });
+          const spec = parseScenarioSpec(JSON.parse(await readBody(req)));
+          saveScenarioSpec(spec, path.join(dir, 'scenarios'));
+          scenarios = [...scenarios.filter((s) => s.id !== spec.id), scenarioFromSpec(spec)];
+          broadcast('scenarios', scenarioList());
+          return sendJson(res, 200, { ok: true, id: spec.id });
+        }
+        return sendJson(res, 200, scenarioList());
+      }
+      // ---------- setup wizard
+      if (p === '/api/setup/status') {
+        return sendJson(res, 200, {
+          configured: !!config && config.teams.length > 0,
+          providers: await detect(),
+          catalog: PROVIDERS.map((x) => ({ id: x.id, label: x.label, needsKey: x.needsKey, keyUrl: x.keyUrl ?? null })),
+          config: config ?? normalizeConfig({}),
+          error: lastError,
+        });
+      }
+      if (p === '/api/setup/probe' && req.method === 'POST') {
+        const body = JSON.parse(await readBody(req, 16 * 1024)) as { provider: ProviderId; key?: string };
+        const info = PROVIDERS.find((x) => x.id === body.provider);
+        if (!info) return sendJson(res, 400, { error: 'unknown provider' });
+        // an empty key means "use the one already in the environment" (it is never sent to the browser)
+        const envKey = info.envVar ? process.env[info.envVar] ?? (info.id === 'gemini' ? process.env.GOOGLE_API_KEY : undefined) : undefined;
+        const key = typeof body.key === 'string' && body.key.trim() ? body.key.trim() : envKey;
+        registerSecret(key);
+        const result = await probe(info.id, key, { baseUrl: info.id === 'ollama' ? process.env.OLLAMA_BASE_URL : undefined });
+        return sendJson(res, 200, result);
+      }
+      if (p === '/api/setup/save' && req.method === 'POST') {
+        const body = JSON.parse(await readBody(req, 64 * 1024)) as { keys?: Record<string, string>; config?: Partial<CivConfig> };
+        const updates: Record<string, string> = {};
+        for (const [prov, envVar] of Object.entries(KEY_ENV)) {
+          const v = body.keys?.[prov];
+          if (typeof v === 'string' && v.trim()) {
+            if (/[\s"'=#]/.test(v.trim())) return sendJson(res, 400, { error: `invalid key format for ${prov}` });
+            updates[envVar] = v.trim();
+          }
+        }
+        const next = normalizeConfig(body.config ?? {});
+        if (!next.teams.length) return sendJson(res, 400, { error: 'pick at least one team' });
+        if (Object.keys(updates).length) {
+          saveEnv(updates, dir);
+          for (const [k, v] of Object.entries(updates)) {
+            process.env[k] = v;
+            registerSecret(v);
+          }
+        }
+        config = next;
+        saveConfig(config, dir);
+        const ok = launch();
+        return sendJson(res, ok ? 200 : 400, ok ? { ok: true } : { error: lastError });
+      }
+      // ---------- static files
       const rel = decodeURIComponent(p === '/' ? '/index.html' : p);
       const file = path.normalize(path.join(o.webRoot, rel));
       if (!file.startsWith(path.normalize(o.webRoot))) return sendJson(res, 403, { error: 'forbidden' });
@@ -214,24 +321,40 @@ export function startServer(o: ServerOptions): Promise<{ url: string; close: () 
         return res.end('Dashboard not built. Run: npm run build');
       }
       const ext = path.extname(target);
-      res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream', 'cache-control': ext === '.html' ? 'no-store' : 'public, max-age=3600' });
+      res.writeHead(200, {
+        'content-type': MIME[ext] ?? 'application/octet-stream',
+        'cache-control': ext === '.html' ? 'no-store' : 'public, max-age=3600',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
+      });
       fs.createReadStream(target).pipe(res);
     } catch (err) {
-      sendJson(res, 500, { error: (err as Error).message });
+      sendJson(res, 400, { error: redact((err as Error).message) });
     }
   });
+
+  function applyCommand(cmd: Command) {
+    switch (cmd.type) {
+      case 'pause': runner.paused = true; break;
+      case 'resume': runner.paused = false; break;
+      case 'speed': runner.tps = cmd.tps; break;
+      case 'reset': launch(runner.scenario?.id, cmd.seed ?? Math.floor(Math.random() * 1e9)); break;
+      default: runner.sim!.command(cmd);
+    }
+    broadcast('control', { paused: runner.paused, tps: runner.tps });
+  }
 
   return new Promise((resolve, reject) => {
     server.on('error', reject);
     server.listen(o.port, o.host ?? '127.0.0.1', () => {
-      runner?.start();
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : o.port;
       resolve({
         url: `http://localhost:${port}`,
         runner,
+        mode: () => mode,
         close: () => {
-          runner?.stop();
+          runner.stop();
           for (const c of clients) c.end();
           server.close();
         },
@@ -239,5 +362,3 @@ export function startServer(o: ServerOptions): Promise<{ url: string; close: () 
     });
   });
 }
-
-export type { SimOptions };

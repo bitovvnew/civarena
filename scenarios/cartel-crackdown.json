@@ -1,0 +1,13 @@
+{
+  "format": "civarena-scenario",
+  "version": 1,
+  "id": "cartel-crackdown",
+  "name": "Cartel crackdown",
+  "description": "No regulators for 200 days, so cartels grow fat. Then antitrust arrives with fines. Who saw it coming?",
+  "author": "CivArena",
+  "tags": ["cartels", "regulation"],
+  "setup": { "gov": { "antitrust": false, "taxRate": 0.08 } },
+  "timeline": [
+    { "day": 200, "command": { "type": "antitrust", "on": true }, "headline": "A new regulator is sworn in. Every cartel is now under investigation." }
+  ]
+}

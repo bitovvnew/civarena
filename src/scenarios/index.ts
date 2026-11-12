@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Scenario } from '../engine/plugins.js';
+import { parseScenarioSpec, scenarioFromSpec, type ScenarioSpec } from './spec.js';
 
 export const classic: Scenario = {
   id: 'classic',
@@ -70,23 +71,33 @@ export const volcker: Scenario = {
   },
 };
 
-export const BUILTIN: Scenario[] = [classic, laissezFaire, welfareState, hyperinflation, drought, goldRush, volcker];
+export const BUILTIN: Scenario[] = [classic, laissezFaire, welfareState, hyperinflation, drought, goldRush, volcker].map((s) => ({ ...s, source: 'builtin' as const }));
 
 function isScenario(x: unknown): x is Scenario {
   return !!x && typeof x === 'object' && typeof (x as Scenario).id === 'string' && typeof (x as Scenario).name === 'string';
 }
 
-/** Load built-ins plus any user scenarios from `<dir>/scenarios/*.{js,mjs}`. */
+/**
+ * Load built-ins plus user scenarios from `./scenarios`:
+ *   *.json  declarative scenarios (safe to share; validated, no code runs)
+ *   *.mjs / *.js / *.ts  code plugins (only files you put there yourself)
+ */
 export async function loadScenarios(dirs: string[] = [path.join(process.cwd(), 'scenarios')]): Promise<Scenario[]> {
   const out = [...BUILTIN];
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) continue;
     for (const f of fs.readdirSync(dir).sort()) {
-      if (!/\.(m?js|m?ts)$/.test(f) || f.endsWith('.d.ts')) continue;
+      const file = path.join(dir, f);
       try {
-        const mod = await import(pathToFileURL(path.join(dir, f)).href);
+        if (f.endsWith('.json')) {
+          const sc = scenarioFromSpec(parseScenarioSpec(JSON.parse(fs.readFileSync(file, 'utf8'))));
+          if (!out.some((x) => x.id === sc.id)) out.push(sc);
+          continue;
+        }
+        if (!/\.(m?js|m?ts)$/.test(f) || f.endsWith('.d.ts')) continue;
+        const mod = await import(pathToFileURL(file).href);
         const sc = mod.default ?? mod.scenario;
-        if (isScenario(sc) && !out.some((x) => x.id === sc.id)) out.push(sc);
+        if (isScenario(sc) && !out.some((x) => x.id === sc.id)) out.push({ ...sc, source: 'code' });
       } catch (err) {
         console.warn(`  ! could not load scenario ${f}: ${(err as Error).message}`);
       }
@@ -94,3 +105,13 @@ export async function loadScenarios(dirs: string[] = [path.join(process.cwd(), '
   }
   return out;
 }
+
+/** Save a declarative scenario into ./scenarios (used by the dashboard's scenario builder). */
+export function saveScenarioSpec(spec: ScenarioSpec, dir = path.join(process.cwd(), 'scenarios')): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${spec.id}.json`);
+  fs.writeFileSync(file, JSON.stringify(spec, null, 2) + '\n');
+  return file;
+}
+
+export { parseScenarioSpec, scenarioFromSpec, ScenarioSpecError, type ScenarioSpec } from './spec.js';

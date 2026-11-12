@@ -109,9 +109,9 @@ export function LineChart({ x, series, height = 150, format, zeroBased = true, c
             <text key={t} x={sx(t)} y={height - 5} className="tick" textAnchor="middle">{Math.round(t)}</text>
           ))}
           {area && series.length === 1 && paths[0] && (
-            <path d={`${paths[0]}L${sx(xMax)},${sy(Math.max(0, y0))}L${sx(xMin)},${sy(Math.max(0, y0))}Z`} fill={series[0].color} opacity={0.12} />
+            <path className="fade-in" d={`${paths[0]}L${sx(xMax)},${sy(Math.max(0, y0))}L${sx(xMin)},${sy(Math.max(0, y0))}Z`} fill={series[0].color} opacity={0.1} />
           )}
-          {paths.map((d, i) => <path key={series[i].id} d={d} fill="none" stroke={series[i].color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />)}
+          {paths.map((d, i) => <path className="draw" pathLength={1} key={series[i].id} d={d} fill="none" stroke={series[i].color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />)}
           {cursorX != null && cursorX >= xMin && cursorX <= xMax && <line x1={sx(cursorX)} x2={sx(cursorX)} y1={pad.t} y2={pad.t + ih} className="cursor" />}
           {hi !== null && x[hi] !== undefined && (
             <g>
@@ -199,7 +199,7 @@ export function StackedShare({ x, series, height = 180, format }: { x: number[];
     <div className="chart" ref={ref} style={{ height }}>
       {w > 0 && n > 1 && (
         <svg width={w} height={height} role="img">
-          {shapes.map((d, k) => <path key={series[k].id} d={d} fill={series[k].color} opacity={hover === null ? 0.9 : 0.75} />)}
+          <g className="wipe">{shapes.map((d, k) => <path key={series[k].id} d={d} fill={series[k].color} opacity={hover === null ? 0.92 : 0.78} />)}</g>
           {[0, 0.5, 1].map((t) => (
             <text key={t} x={pad.l - 6} y={sy(t)} className="tick" textAnchor="end" dominantBaseline="middle">{Math.round(t * 100)}%</text>
           ))}
