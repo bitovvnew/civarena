@@ -1,0 +1,26 @@
+name: Bug report
+description: Something in the simulation, CLI or dashboard is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: civarena --teams openai,mock:tycoon --seed 7
+  - type: input
+    id: version
+    attributes:
+      label: CivArena version and Node version
+      placeholder: civarena 0.1.0, node 22.11
+  - type: textarea
+    id: replay
+    attributes:
+      label: Replay or logs
+      description: Attach a .civ.json.gz replay if the bug is in the world itself. Seeds make bugs reproducible.

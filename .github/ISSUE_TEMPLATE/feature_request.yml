@@ -1,0 +1,20 @@
+name: Feature or scenario idea
+description: New mechanics, scenarios, model adapters or dashboard views
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should the world do that it can't today? Who would it make interesting for?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Economy engine, Scenario, Model adapter, Dashboard, CLI, Other]
+  - type: textarea
+    id: details
+    attributes:
+      label: How it could work

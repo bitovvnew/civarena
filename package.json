@@ -1,0 +1,69 @@
+{
+  "name": "civarena",
+  "version": "0.1.0",
+  "description": "AI Civilization Arena: hundreds of LLM agents run a living economy with markets, banks, taxes and cartels. Watch it on a live dashboard and find out which model is the best capitalist.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "civarena": "bin/civarena.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "scenarios",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && vite build",
+    "build:engine": "tsc -p tsconfig.json",
+    "build:web": "vite build",
+    "start": "npm run build --silent && node bin/civarena.js",
+    "dev": "vite",
+    "demo": "node bin/civarena.js",
+    "sim": "node bin/civarena.js run",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "screenshots": "node scripts/screenshots.mjs",
+    "prepare": "node scripts/prepare.mjs",
+    "demo:build": "node scripts/build-demo.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "multi-agent",
+    "simulation",
+    "economy",
+    "agent-based-model",
+    "openai",
+    "anthropic",
+    "gemini",
+    "ollama",
+    "dashboard",
+    "benchmark"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bitovvnew/civarena.git"
+  },
+  "homepage": "https://github.com/bitovvnew/civarena#readme",
+  "bugs": {
+    "url": "https://github.com/bitovvnew/civarena/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

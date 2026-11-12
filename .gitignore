@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.civ.json
+*.civ.json.gz
+!examples/*.civ.json.gz
+.env
+.DS_Store
+coverage/
